@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, abort
 from flask_restful import Api, Resource, reqparse, inputs
 from flask_sqlalchemy import SQLAlchemy
 from marshmallow import Schema, fields
@@ -11,6 +11,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///events.db'
 
 api = Api(app)
 
+
 class Event(db.Model):
     __tablename__ = 'events'
     id = db.Column(db.Integer, primary_key=True)
@@ -18,14 +19,15 @@ class Event(db.Model):
     date = db.Column(db.Date, nullable=False)
 
 
-db.create_all()
-
 class EventSchema(Schema):
     id = fields.Integer()
     event = fields.String()
     date = fields.Date("%Y-%m-%d")
 
+
+db.create_all()
 event_schema = EventSchema(many=True)
+
 
 class EventResource(Resource):
 
@@ -41,7 +43,22 @@ class EventResource(Resource):
             help="The event name is required!",
             required=True)
 
+        self.range_parser = reqparse.RequestParser()
+        self.range_parser.add_argument('start_time',
+            type=inputs.date,
+            help='The correct format is YYYY-MM-DD!',
+            required=False)
+        self.range_parser.add_argument('end_time',
+            type=inputs.date,
+            required=False)
+
     def get(self):
+        args = self.range_parser.parse_args()
+        if args['start_time'] and args['end_time']:
+            st = args['start_time']
+            et = args['end_time']
+            events = Event.query.filter(Event.date.between(st, et)).all()
+            return event_schema.dump(events)
         return event_schema.dump(Event.query.all())
 
     def post(self):
@@ -60,8 +77,24 @@ class TodayResource(Resource):
         return event_schema.dump(Event.query.filter(Event.date == datetime.date.today()).all())
 
 
+class EventByID(Resource):
+
+    def get(self, event_id):
+        event = event_schema.dump(Event.query.filter_by(id=event_id).all())
+        if len(event) > 0:
+            return event[0]
+        return abort(404, "The event doesn't exist!")
+
+    def delete(self, event_id):
+        if Event.query.filter_by(id=event_id).delete():
+            db.session.commit()
+            return {'message': 'The event has been deleted!'}
+        return abort(404, "The event doesn't exist!")
+
+
 api.add_resource(EventResource, '/event')
 api.add_resource(TodayResource, '/event/today')
+api.add_resource(EventByID, '/event/<int:event_id>')
 
 # do not change the way you run the program
 if __name__ == '__main__':
