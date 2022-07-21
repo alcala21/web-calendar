@@ -84,7 +84,7 @@ class EventByID(Resource):
         if len(event) > 0:
             return event[0]
         return abort(404, "The event doesn't exist!")
-
+ 
     def delete(self, event_id):
         if Event.query.filter_by(id=event_id).delete():
             db.session.commit()
